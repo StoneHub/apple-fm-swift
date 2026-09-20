@@ -3,8 +3,9 @@ import PackageDescription
 
 let package = Package(
     name: "AppleFM",
-    // PackageDescription 6.0 does not yet expose .v26; API use is guarded in the library.
-    platforms: [.macOS(.v15)],
+    // FoundationModels is availability-guarded in the library; clients can use
+    // AppleFM availability and the legacy JSON API on macOS 14 and later.
+    platforms: [.macOS(.v14)],
     products: [
         .library(name: "AppleFM", targets: ["AppleFM"]),
         .executable(name: "apple-fm-helper", targets: ["apple-fm-helper"])
