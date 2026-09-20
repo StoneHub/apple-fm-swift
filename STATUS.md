@@ -50,6 +50,6 @@ Artifacts: `.build/release/apple-fm-helper` and `Examples/NativeGeneration/.buil
 
 Runtime generation was exercised on this Mac's macOS 27.2 only. macOS 14/15 unsupported-system behavior and macOS 26 model behavior were compile/link reviewed but not exercised on those OS versions. Actual Jot Xcode integration is the Jot lead's next gate; parent owns final pinning, app build/install, and dogfooding acceptance.
 
-The macOS 26-compatible `GenerationOptions(sampling:...)` example produces an SDK 27 deprecation warning; its newer replacement is macOS 27-only. Keep the older initializer to support macOS 26. Model results vary, and cancellation does not prove system inference stops instantly. No license selection was made; the pre-existing missing LICENSE was reported to parent and deferred.
+The macOS 26-compatible `GenerationOptions(sampling:...)` example produces an SDK 27 deprecation warning. It matches Jot's existing call; this SDK also provides a `samplingMode:` replacement back-deployed to macOS 26. Model results vary, and cancellation does not prove system inference stops instantly. No license selection was made; the pre-existing missing LICENSE was reported to parent and deferred.
 
 Owned background processes: none. Build processes and bounded smoke subprocesses exited. Branch push is authorized solely to make the exact framework revision fetchable for Jot dependency validation; main and releases remain unchanged.
