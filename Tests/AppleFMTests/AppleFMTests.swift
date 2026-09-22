@@ -163,3 +163,14 @@ private actor InvocationRecorder {
     let result = await AppleFMClient().complete(request)
     #expect(result == CompletionResult(id: "too-large", status: .error, reason: "context exceeds 6000 characters"))
 }
+
+@Test func commentModeDecodesAndAsksForCommentText() throws {
+    let json = ##"{"id":"c","kind":"editor","language":"ruby","before":"# Returns the ","after":"","mode":"comment"}"##
+    let request = try JSONDecoder().decode(CompletionRequest.self, from: Data(json.utf8))
+    #expect(request.mode == "comment")
+    #expect(AppleFMClient.instruction(for: request).contains("inside a ruby comment"))
+    let legacyJSON = #"{"id":"l","kind":"editor","language":"ruby","before":"x","after":""}"#
+    let legacy = try JSONDecoder().decode(CompletionRequest.self, from: Data(legacyJSON.utf8))
+    #expect(legacy.mode == nil)
+    #expect(!AppleFMClient.instruction(for: legacy).contains("comment"))
+}
