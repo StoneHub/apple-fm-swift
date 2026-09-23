@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import FoundationModels
 @testable import AppleFM
 
 private enum SecretModelError: Error {
@@ -173,4 +174,14 @@ private actor InvocationRecorder {
     let legacy = try JSONDecoder().decode(CompletionRequest.self, from: Data(legacyJSON.utf8))
     #expect(legacy.mode == nil)
     #expect(!AppleFMClient.instruction(for: legacy).contains("comment"))
+}
+
+@Test func completionsUseGreedySamplingWithAKindSizedCap() throws {
+    guard #available(macOS 26.0, *) else { return }
+    let editor = CompletionRequest(id: "e", kind: "editor", language: "ruby", before: "x", after: "")
+    let comment = CompletionRequest(id: "c", kind: "editor", language: "ruby", before: "# x", after: "", mode: "comment")
+    let terminal = CompletionRequest(id: "t", kind: "terminal", language: "zsh", before: "git sta", after: "")
+    #expect(AppleFMClient.options(for: editor) == GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 160))
+    #expect(AppleFMClient.options(for: comment) == GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 48))
+    #expect(AppleFMClient.options(for: terminal) == GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 48))
 }
