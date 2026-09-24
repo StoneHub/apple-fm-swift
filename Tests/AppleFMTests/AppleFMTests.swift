@@ -231,7 +231,8 @@ private actor InvocationRecorder {
     #expect(try JSONDecoder().decode(CompletionRequest.self, from: Data(json.utf8)).keep == "block")
     let legacy = CompletionRequest(id: "l", kind: "editor", language: "ruby", before: "x", after: "")
     #expect(legacy.keep == nil)
-    #expect(!String(decoding: try JSONEncoder().encode(legacy), as: UTF8.self).contains("keep"))
+    let encoded = String(decoding: try JSONEncoder().encode(legacy), as: UTF8.self)
+    #expect(!encoded.contains("keep"))
 }
 
 @Test func withoutKeepTheWholeReplyIsGenerated() {
