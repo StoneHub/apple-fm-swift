@@ -197,6 +197,8 @@ private actor InvocationRecorder {
     )
 
     let prompt = AppleFMClient.prompt(for: request)
+    #expect(prompt.contains("Task: complete only the missing insertion at the clearly marked <CURSOR>."))
+    #expect(prompt.contains("Language: ruby"))
     #expect(prompt.contains("Text before <CURSOR>:\nformat_price("))
     #expect(prompt.contains("\n<CURSOR>\nText after <CURSOR>:\n)"))
     #expect(prompt.contains("Bounded context:\nThe argument is a price."))

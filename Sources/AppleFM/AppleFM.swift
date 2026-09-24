@@ -87,7 +87,7 @@ public struct AppleFMClient: Sendable {
     /// from the instructions passed to the model session.
     static func prompt(for request: CompletionRequest) -> String {
         let context = request.context.map { "\n\nBounded context:\n\($0)" } ?? ""
-        return "Text before <CURSOR>:\n\(request.before)\n\n<CURSOR>\nText after <CURSOR>:\n\(request.after)\(context)"
+        return "Task: complete only the missing insertion at the clearly marked <CURSOR>. Return only text to insert at <CURSOR>; do not repeat the supplied prefix or suffix, add Markdown, explanations, or instructions.\n\nLanguage: \(request.language)\n\nText before <CURSOR>:\n\(request.before)\n\n<CURSOR>\nText after <CURSOR>:\n\(request.after)\(context)"
     }
 
     /// Query on any supported deployment version, including macOS 14 and 15.
