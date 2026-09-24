@@ -185,3 +185,21 @@ private actor InvocationRecorder {
     #expect(AppleFMClient.options(for: comment) == GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 48))
     #expect(AppleFMClient.options(for: terminal) == GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 48))
 }
+
+@Test func completionPromptUsesCursorMarkerInsteadOfEchoableLabels() {
+    let request = CompletionRequest(
+        id: "prompt",
+        kind: "editor",
+        language: "ruby",
+        before: "format_price(",
+        after: ")",
+        context: "The argument is a price."
+    )
+
+    let prompt = AppleFMClient.prompt(for: request)
+    #expect(prompt.contains("Text before <CURSOR>:\nformat_price("))
+    #expect(prompt.contains("\n<CURSOR>\nText after <CURSOR>:\n)"))
+    #expect(prompt.contains("Bounded context:\nThe argument is a price."))
+    #expect(!prompt.contains("Prefix:"))
+    #expect(!prompt.contains("Suffix:"))
+}

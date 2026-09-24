@@ -81,6 +81,15 @@ public struct AppleFMClient: Sendable {
     public static let maximumContextCharacters = 6_000
     public init() {}
 
+    /// Keep the cursor boundary in the prompt itself rather than naming the
+    /// supplied text `Prefix` and `Suffix`. Those labels are easy for a model
+    /// to echo into an editor insertion. The request data remains separated
+    /// from the instructions passed to the model session.
+    static func prompt(for request: CompletionRequest) -> String {
+        let context = request.context.map { "\n\nBounded context:\n\($0)" } ?? ""
+        return "Text before <CURSOR>:\n\(request.before)\n\n<CURSOR>\nText after <CURSOR>:\n\(request.after)\(context)"
+    }
+
     /// Query on any supported deployment version, including macOS 14 and 15.
     public var modelAvailability: AppleFMAvailability {
         guard #available(macOS 26, *) else { return .unsupportedOS }
@@ -168,9 +177,8 @@ public struct AppleFMClient: Sendable {
         guard suppliedContextLength <= Self.maximumContextCharacters else {
             return CompletionResult(id: request.id, status: .error, reason: "context exceeds 6000 characters")
         }
-        let context = request.context.map { "\nContext:\n\($0)" } ?? ""
         let instruction = Self.instruction(for: request)
-        let prompt = "Prefix:\n\(request.before)\nSuffix:\n\(request.after)\(context)"
+        let prompt = Self.prompt(for: request)
         do {
             try Task.checkCancellation()
         } catch is CancellationError {
