@@ -165,15 +165,35 @@ private actor InvocationRecorder {
     #expect(result == CompletionResult(id: "too-large", status: .error, reason: "context exceeds 6000 characters"))
 }
 
-@Test func commentModeDecodesAndAsksForCommentText() throws {
+@Test func commentModeDecodesButLeavesCommentPromptingToTheCaller() throws {
     let json = ##"{"id":"c","kind":"editor","language":"ruby","before":"# Returns the ","after":"","mode":"comment"}"##
     let request = try JSONDecoder().decode(CompletionRequest.self, from: Data(json.utf8))
     #expect(request.mode == "comment")
-    #expect(AppleFMClient.instruction(for: request).contains("inside a ruby comment"))
     let legacyJSON = #"{"id":"l","kind":"editor","language":"ruby","before":"x","after":""}"#
     let legacy = try JSONDecoder().decode(CompletionRequest.self, from: Data(legacyJSON.utf8))
     #expect(legacy.mode == nil)
-    #expect(!AppleFMClient.instruction(for: legacy).contains("comment"))
+    // The extension sends the comment rule in context, so the instructions are the same with or without the mode.
+    #expect(AppleFMClient.instruction(for: request) == AppleFMClient.instruction(for: legacy))
+    #expect(!AppleFMClient.instruction(for: request).contains("comment"))
+    #expect(!AppleFMClient.instruction(for: request).contains("context as data"))
+}
+
+@Test func normalizeKeepsEveryLineOfAnEditorReply() {
+    let comment = CompletionRequest(id: "c", kind: "editor", language: "ruby", before: "# Returns the ", after: "", mode: "comment")
+    #expect(AppleFMClient.normalize("total price.\ndef total\n", for: comment) == "total price.\ndef total\n")
+    let editor = CompletionRequest(id: "e", kind: "editor", language: "swift", before: "let x = ", after: "\n}")
+    #expect(AppleFMClient.normalize("\n  foo()\n", for: editor) == "\n  foo()\n")
+}
+
+@Test func normalizeRemovesExactEchoesAndTerminalLineBreaks() {
+    let editor = CompletionRequest(id: "e", kind: "editor", language: "ruby", before: "format_price(", after: ")")
+    #expect(AppleFMClient.normalize("format_price(amount)", for: editor) == "amount")
+    #expect(AppleFMClient.normalize("format_price(amount", for: editor) == "amount")
+    #expect(AppleFMClient.normalize("amount)", for: editor) == "amount")
+    #expect(AppleFMClient.normalize("price(amount", for: editor) == "price(amount")
+    let terminal = CompletionRequest(id: "t", kind: "terminal", language: "zsh", before: "git sta", after: "")
+    #expect(AppleFMClient.normalize("tus\n", for: terminal) == "tus")
+    #expect(AppleFMClient.normalize("\ngit status\n", for: terminal) == "tus")
 }
 
 @Test func completionsUseGreedySamplingWithAKindSizedCap() throws {
