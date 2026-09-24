@@ -9,6 +9,8 @@ swift build -c release
 printf '%s\n' '{"id":"trial","kind":"terminal","language":"zsh","before":"git sta","after":""}' | .build/release/apple-fm-helper
 ```
 
+The helper reads one JSON request and writes one JSON result. `kind` is `terminal` or `editor`; `before` and `after` are the text around the cursor, and optional `context` is extra text for the model. An editor request with `"mode":"comment"` asks for the rest of a comment on the current line and gets a one-line reply. Completions use greedy sampling, so the same request gets the same answer, and stop after 48 tokens for terminal and comment requests and 160 for editor requests.
+
 ## Native Swift apps
 
 Add the `AppleFM` library product to your app. `AppleFMClient().modelAvailability` returns typed availability on every supported deployment version. Keep generation inside a macOS 26 availability guard:
