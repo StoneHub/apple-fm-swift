@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import FoundationModels
 @testable import AppleFM
 
 private enum SecretModelError: Error {
@@ -162,4 +163,45 @@ private actor InvocationRecorder {
     )
     let result = await AppleFMClient().complete(request)
     #expect(result == CompletionResult(id: "too-large", status: .error, reason: "context exceeds 6000 characters"))
+}
+
+@Test func commentModeDecodesAndAsksForCommentText() throws {
+    let json = ##"{"id":"c","kind":"editor","language":"ruby","before":"# Returns the ","after":"","mode":"comment"}"##
+    let request = try JSONDecoder().decode(CompletionRequest.self, from: Data(json.utf8))
+    #expect(request.mode == "comment")
+    #expect(AppleFMClient.instruction(for: request).contains("inside a ruby comment"))
+    let legacyJSON = #"{"id":"l","kind":"editor","language":"ruby","before":"x","after":""}"#
+    let legacy = try JSONDecoder().decode(CompletionRequest.self, from: Data(legacyJSON.utf8))
+    #expect(legacy.mode == nil)
+    #expect(!AppleFMClient.instruction(for: legacy).contains("comment"))
+}
+
+@Test func completionsUseGreedySamplingWithAKindSizedCap() throws {
+    guard #available(macOS 26.0, *) else { return }
+    let editor = CompletionRequest(id: "e", kind: "editor", language: "ruby", before: "x", after: "")
+    let comment = CompletionRequest(id: "c", kind: "editor", language: "ruby", before: "# x", after: "", mode: "comment")
+    let terminal = CompletionRequest(id: "t", kind: "terminal", language: "zsh", before: "git sta", after: "")
+    #expect(AppleFMClient.options(for: editor) == GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 160))
+    #expect(AppleFMClient.options(for: comment) == GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 48))
+    #expect(AppleFMClient.options(for: terminal) == GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 48))
+}
+
+@Test func completionPromptUsesCursorMarkerInsteadOfEchoableLabels() {
+    let request = CompletionRequest(
+        id: "prompt",
+        kind: "editor",
+        language: "ruby",
+        before: "format_price(",
+        after: ")",
+        context: "The argument is a price."
+    )
+
+    let prompt = AppleFMClient.prompt(for: request)
+    #expect(prompt.contains("Task: complete only the missing insertion at the clearly marked <CURSOR>."))
+    #expect(prompt.contains("Language: ruby"))
+    #expect(prompt.contains("Text before <CURSOR>:\nformat_price("))
+    #expect(prompt.contains("\n<CURSOR>\nText after <CURSOR>:\n)"))
+    #expect(prompt.contains("Bounded context:\nThe argument is a price."))
+    #expect(!prompt.contains("Prefix:"))
+    #expect(!prompt.contains("Suffix:"))
 }
