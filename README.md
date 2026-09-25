@@ -50,3 +50,7 @@ Run model-independent tests with `swift test`. The separate [native example](Exa
 Download versioned source from [GitHub Releases](https://github.com/StoneHub/apple-fm-swift/releases/latest). Build locally to use the helper independently. For a prebuilt end-user install, use the VS Code release above.
 
 To publish an iteration: update VERSION, commit and push main, run `./scripts/release.sh`, then publish the generated assets with `gh release create v$(cat VERSION) release/* --target main --generate-notes`. Releases are built locally, not on every push.
+
+## Cloud task preparation
+
+See [cloud work](docs/CLOUD-WORK.md) for supported runner checks, task boundaries and local acceptance gates.
