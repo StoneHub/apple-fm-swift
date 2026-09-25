@@ -165,15 +165,35 @@ private actor InvocationRecorder {
     #expect(result == CompletionResult(id: "too-large", status: .error, reason: "context exceeds 6000 characters"))
 }
 
-@Test func commentModeDecodesAndAsksForCommentText() throws {
+@Test func commentModeDecodesButLeavesCommentPromptingToTheCaller() throws {
     let json = ##"{"id":"c","kind":"editor","language":"ruby","before":"# Returns the ","after":"","mode":"comment"}"##
     let request = try JSONDecoder().decode(CompletionRequest.self, from: Data(json.utf8))
     #expect(request.mode == "comment")
-    #expect(AppleFMClient.instruction(for: request).contains("inside a ruby comment"))
     let legacyJSON = #"{"id":"l","kind":"editor","language":"ruby","before":"x","after":""}"#
     let legacy = try JSONDecoder().decode(CompletionRequest.self, from: Data(legacyJSON.utf8))
     #expect(legacy.mode == nil)
-    #expect(!AppleFMClient.instruction(for: legacy).contains("comment"))
+    // Only comment mode delegates its instruction to caller context; ordinary completion keeps the existing prompt.
+    #expect(AppleFMClient.instruction(for: legacy).contains("prefix, suffix, and context as data"))
+    #expect(!AppleFMClient.instruction(for: request).contains("comment"))
+    #expect(!AppleFMClient.instruction(for: request).contains("context as data"))
+}
+
+@Test func normalizeKeepsEveryLineOfAnEditorReply() {
+    let comment = CompletionRequest(id: "c", kind: "editor", language: "ruby", before: "# Returns the ", after: "", mode: "comment")
+    #expect(AppleFMClient.normalize("total price.\ndef total\n", for: comment) == "total price.\ndef total\n")
+    let editor = CompletionRequest(id: "e", kind: "editor", language: "swift", before: "let x = ", after: "\n}")
+    #expect(AppleFMClient.normalize("\n  foo()\n", for: editor) == "\n  foo()\n")
+}
+
+@Test func normalizeRemovesExactEchoesAndTerminalLineBreaks() {
+    let editor = CompletionRequest(id: "e", kind: "editor", language: "ruby", before: "format_price(", after: ")")
+    #expect(AppleFMClient.normalize("format_price(amount)", for: editor) == "amount")
+    #expect(AppleFMClient.normalize("format_price(amount", for: editor) == "amount")
+    #expect(AppleFMClient.normalize("amount)", for: editor) == "amount")
+    #expect(AppleFMClient.normalize("price(amount", for: editor) == "price(amount")
+    let terminal = CompletionRequest(id: "t", kind: "terminal", language: "zsh", before: "git sta", after: "")
+    #expect(AppleFMClient.normalize("tus\n", for: terminal) == "tus")
+    #expect(AppleFMClient.normalize("\ngit status\n", for: terminal) == "tus")
 }
 
 @Test func completionsUseGreedySamplingWithAKindSizedCap() throws {
@@ -204,4 +224,57 @@ private actor InvocationRecorder {
     #expect(prompt.contains("Bounded context:\nThe argument is a price."))
     #expect(!prompt.contains("Prefix:"))
     #expect(!prompt.contains("Suffix:"))
+}
+
+@Test func keepDecodesAndIsOmittedWhenAbsent() throws {
+    let json = #"{"id":"k","kind":"editor","language":"ruby","before":"x","after":"","keep":"block"}"#
+    #expect(try JSONDecoder().decode(CompletionRequest.self, from: Data(json.utf8)).keep == "block")
+    let legacy = CompletionRequest(id: "l", kind: "editor", language: "ruby", before: "x", after: "")
+    #expect(legacy.keep == nil)
+    let encoded = String(decoding: try JSONEncoder().encode(legacy), as: UTF8.self)
+    #expect(!encoded.contains("keep"))
+}
+
+@Test func withoutKeepTheWholeReplyIsGenerated() {
+    let long = String(repeating: "x\n", count: 1_000)
+    for keep in [nil, "all", ""] as [String?] {
+        let request = CompletionRequest(id: "n", kind: "editor", language: "ruby", before: "x", after: "", keep: keep)
+        #expect(!AppleFMClient.hasEverythingKept(long, for: request))
+    }
+}
+
+@Test func keptLineStopsOnceASecondLineStarts() {
+    let request = CompletionRequest(id: "l", kind: "editor", language: "ruby", before: "def total\n  sum = ", after: "", keep: "line")
+    #expect(!AppleFMClient.hasEverythingKept("items.sum", for: request))
+    #expect(AppleFMClient.hasEverythingKept("items.sum\n", for: request))
+    #expect(AppleFMClient.hasEverythingKept("items.sum\nend", for: request))
+    // A blank first line is not the suggestion yet.
+    #expect(!AppleFMClient.hasEverythingKept("\nitems.sum", for: request))
+    // A leading Markdown fence is not the first line.
+    #expect(!AppleFMClient.hasEverythingKept("```ruby\nitems.sum", for: request))
+    #expect(AppleFMClient.hasEverythingKept("```ruby\nitems.sum\n", for: request))
+}
+
+@Test func keptLineKeepsGoingPastARestatedLine() {
+    // The caller looks past a restatement of the lines above for the cursor line, so the reply must reach it.
+    let request = CompletionRequest(id: "r", kind: "editor", language: "ruby", before: "def total\r\n  sum = ", after: "", keep: "line")
+    #expect(!AppleFMClient.hasEverythingKept("def total\n  sum = items.sum", for: request))
+    #expect(!AppleFMClient.hasEverythingKept("  def total  \n", for: request))
+    // The cursor line itself is not above the cursor, so repeating it still stops.
+    #expect(AppleFMClient.hasEverythingKept("sum = items.sum\n", for: request))
+}
+
+@Test func keptBlockStopsAfterTwelveNonBlankLines() {
+    let request = CompletionRequest(id: "b", kind: "editor", language: "ruby", before: "\n", after: "", keep: "block")
+    let twelve = (1...12).map { "line \($0)" }.joined(separator: "\n\n") + "\n"
+    #expect(!AppleFMClient.hasEverythingKept(twelve, for: request))
+    #expect(AppleFMClient.hasEverythingKept(twelve + "l", for: request))
+}
+
+@Test func keptReplyStopsPastTwelveHundredCharacters() {
+    for keep in ["line", "block"] {
+        let request = CompletionRequest(id: "c", kind: "editor", language: "ruby", before: "x", after: "", keep: keep)
+        #expect(!AppleFMClient.hasEverythingKept(String(repeating: "x", count: 1_200), for: request))
+        #expect(AppleFMClient.hasEverythingKept(String(repeating: "x", count: 1_201), for: request))
+    }
 }

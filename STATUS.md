@@ -1,55 +1,63 @@
-# AppleFM native generation status
+# AppleFM status
 
-Reviewable framework slice for Jot dogfooding, verified 2026-09-20. Parent owns final integration review and app delivery. No PR, merge, release, or app installation performed here.
+Living document. Update it whenever work lands, a branch opens, or an issue changes state.
 
-Implementation commit: `1a822031ce86ae1aede2dde2f4598894d1b48241`.
-Branch: `codex/jot-native-generation`.
-Worktree: `/Users/monroe/Developer/GitRepos/FM/.worktrees/swift-jot-native-generation`.
-Base: `d580e077877b886d7e9818d307d761c28734b43d` (`origin/main` when started).
+Last updated 2026-09-24. Version `0.1.0` (no release cut since #6).
 
-## Contract
+## Now
 
-`AppleFMClient.modelAvailability` exposes `AppleFMAvailability` on macOS 14+. Two macOS 26-gated overloads accept caller instructions, prompt, and native `GenerationOptions`: `generate(instructions:prompt:options:) -> String` and `generate<Content: Generable>(instructions:prompt:generating:options:) -> Content`. Both are async throwing operations.
+| Where | What | State |
+| --- | --- | --- |
+| `main` @ `d5755b6` | Native generation (#1), bounded completion generation (#6) | Landed |
+| `codex/verify-streaming` | #3 comment-mode ownership, #5 early stop | Mac validation passed; integration pending |
 
-Each call creates a fresh `LanguageModelSession` explicitly using `SystemLanguageModel.default`. Cancellation remains in the caller's Swift task, is checked before and after execution, and throws `CancellationError`. Other failures expose only `AppleFMError.unavailable(reason)` or `.generationFailed`. No retained session, cloud path, log, queue, retry, timeout, or app-specific schema/policy was added. Jot retains its transcript instructions, schema, semantic checks, deadline, and no-backlog behavior.
+Open issues: [#3](https://github.com/StoneHub/apple-fm-swift/issues/3) and [#5](https://github.com/StoneHub/apple-fm-swift/issues/5), both addressed on the branch above and closed by its merge.
 
-The legacy `availability() -> String`, `complete(_:)`, and helper JSON shape are preserved. Completion routes through native text generation and retains the original prompts, 6,000-character limit, exact-boundary echo removal, whitespace behavior, and terminal control/multiline checks. The deliberate cancellation improvement gives cancellation precedence over an underlying model error.
+## What the helper does today
 
-## Reproduce
+- **Request**: `id`, `kind` (`terminal` or `editor`), `language`, `before`, `after`, and optionally `context`, `mode` and `keep`. `before` + `after` + `context` must fit in 6,000 characters.
+- **Prompting**: the instructions add a rule of their own only for terminal requests (one line). Everything else about the cursor comes from the caller's `context`, which the model may follow. The prefix and suffix are data. The prompt marks the cursor with `<CURSOR>` and doesn't use echoable `Prefix:`/`Suffix:` labels.
+- **Sampling**: greedy. The cap is 48 tokens for terminal and `mode: "comment"` requests and 160 for other editor requests. `mode` also enables caller-owned comment instructions in bounded context.
+- **Early stop** (branch): with `keep: "line"` or `"block"`, the helper streams and stops once the reply holds what the caller keeps. The rule matches the extension's `stopWhen`: a complete first line that doesn't repeat a line above the cursor, more than 12 non-blank lines, or more than 1,200 characters. The reply can end partway through a line. Without `keep`, the reply is generated in full.
+- **Trimming** (`normalize(_:for:)`): drops an exact echo of `before` or `after`, and the line breaks around a terminal reply. Nothing else. Comment and block shaping belong to the extension.
+- **Result**: one JSON line with `ok`, `empty`, `unavailable`, `cancelled` or `error`. A terminal reply with control characters or several lines is an error.
 
-From this worktree:
+The native Swift API (`AppleFMClient.modelAvailability`, `generate(instructions:prompt:options:)` and the `Generable` overload, both for macOS 26 and later) hasn't changed since #1. Each call gets a fresh session. It throws only `CancellationError` or a sanitized `AppleFMError`, and it never logs or retains anything.
+
+## Next
+
+Integrate the tested branch and bundle its helper with the editor change that sends `keep`. Public releases are a separate step. The large-file fixture still restates code and therefore produces no suggestion; the editor tracks that quality issue separately.
+
+## Validation on this Mac, 2026-09-24
+
+- 21 Swift tests passed and the Release helper built.
+- The original branch changed instructions for all requests and made the TypeScript call-argument fixture stop suggesting. Limiting that instruction change to comment mode restored the baseline.
+- Editor tests passed, including 31 recorded replies and explicit `keep` request checks.
+- Three live runs of all 13 Swift fixtures: 33 good, 6 empty, 0 bad or unchecked; no verdict regressed. The baseline was 11 good and 2 empty in one run.
+- Large-file requests took 1.132–1.195 seconds, versus 1.204 seconds for the current helper in the baseline. This does not establish a material latency improvement on this model version.
+- Code and terminal prompts stay unchanged. The native typed generation API is unchanged; Jot does not need a dependency update for this helper work.
+
+## Known limits
+
+- Runtime generation has only been exercised on macOS 27.2 (2026-09-20 checks). The macOS 14/15 unsupported path and macOS 26 model behavior were only reviewed at compile and link time.
+- Stopping the stream ends the helper's wait, and the helper process exits right after. It is not proof that system inference stops at once.
+- The example's `GenerationOptions(sampling:…)` produces an SDK 27 deprecation warning. `samplingMode:` replaces it and works back to macOS 26.
+- There's no LICENSE file yet.
+
+## Verification log
+
+- **2026-09-24, #3 and #5 branch**: no Swift toolchain in the container (swift.org is blocked by the network policy, and Ubuntu doesn't package Swift), so `swift test` wasn't run. I checked the new stop-rule test expectations against the extension's `stopWhen` in Node: all 15 cases agree.
+- **2026-09-20, #1 on macOS 27.2 with Swift 6.4**:
+  - `swift test` passed with 10 tests, and the release builds of the helper and `Examples/NativeGeneration` both passed.
+  - Both binaries have `minos 14.0`, and FoundationModels is weak-linked.
+  - Live structured smoke passed in 1.01 s and live helper text smoke in 0.74 s.
+  - For malformed, empty, invalid-kind and oversized requests, the helper printed the expected single JSON line, exited 0 and wrote nothing to stderr.
+
+Reproduce:
 
 ```sh
 swift test
 swift build -c release
 swift build -c release --package-path Examples/NativeGeneration
-python3 - <<'PY'
-import subprocess
-subprocess.run(['Examples/NativeGeneration/.build/release/NativeGenerationExample'], check=True, timeout=40)
-PY
-printf '%s\n' '{"id":"trial","kind":"editor","language":"swift","before":"let answer = ","after":"","context":"The answer is 42."}' | .build/release/apple-fm-helper
-xcrun vtool -show-build Examples/NativeGeneration/.build/release/NativeGenerationExample
-otool -l Examples/NativeGeneration/.build/release/NativeGenerationExample
+printf '%s\n' '{"id":"trial","kind":"editor","language":"swift","before":"let answer = ","after":"","context":"The answer is 42.","keep":"line"}' | .build/release/apple-fm-helper
 ```
-
-Artifacts: `.build/release/apple-fm-helper` and `Examples/NativeGeneration/.build/release/NativeGenerationExample`. No installation is needed to run either. Add the AppleFM library product as a package dependency to use the API in an app. Removal consists of removing that dependency or ceasing helper invocation; no shell/editor settings were changed.
-
-## Checks actually run
-
-- macOS 27.2 (26B5086k), Xcode toolchain Swift 6.4 (`swiftlang-6.4.0.34.1`). SDK signatures and Apple's public response documentation checked for the macOS 26 overloads.
-- `swift test`: 10 tests passed. Covers JSON round-trip, legacy empty/invalid/oversized requests, all unavailable runner states, pre-cancellation without invoking availability/model work, external cancellation while running, response discard after cancellation, cancellation precedence over raw failure, and error redaction. Tests call an internal runner seam; no model generation is required.
-- `swift build -c release`: passed, including helper.
-- External native example release build: passed with its own macOS 14 manifest, caller-owned `@Generable` type, and main-actor caller. No extra public Sendable constraint was needed.
-- `vtool`: helper and external consumer both have `minos 14.0`. `otool`: external consumer links FoundationModels with `LC_LOAD_WEAK_DYLIB`.
-- Bounded live structured smoke: passed in 1.01 seconds, availability `available`, synthetic input `um hello there we can meet tomorrow`, structured text `Hello, we can meet tomorrow.`. Shape/nonempty content checked; exact wording is not an assertion.
-- Actual release helper subprocess checks: malformed JSON, empty request, invalid kind, and oversized context returned the expected single JSON line, zero exit status, and empty stderr.
-- Bounded live helper text smoke: passed in 0.74 seconds, result `{"id":"native-text-smoke","insertText":"42","status":"ok"}`.
-- Lead reviewed public signatures, fresh-session ownership, task/cancellation flow, privacy/error boundaries, deployment guards, and legacy normalization diff. `git diff --check` passed.
-
-## Limits and next gate
-
-Runtime generation was exercised on this Mac's macOS 27.2 only. macOS 14/15 unsupported-system behavior and macOS 26 model behavior were compile/link reviewed but not exercised on those OS versions. Actual Jot Xcode integration is the Jot lead's next gate; parent owns final pinning, app build/install, and dogfooding acceptance.
-
-The macOS 26-compatible `GenerationOptions(sampling:...)` example produces an SDK 27 deprecation warning. It matches Jot's existing call; this SDK also provides a `samplingMode:` replacement back-deployed to macOS 26. Model results vary, and cancellation does not prove system inference stops instantly. No license selection was made; the pre-existing missing LICENSE was reported to parent and deferred.
-
-Owned background processes: none. Build processes and bounded smoke subprocesses exited. Branch push is authorized solely to make the exact framework revision fetchable for Jot dependency validation; main and releases remain unchanged.
