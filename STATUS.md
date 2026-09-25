@@ -8,10 +8,9 @@ Last updated 2026-09-24. Version `0.1.0` (no release cut since #6).
 
 | Where | What | State |
 | --- | --- | --- |
-| `main` @ `d5755b6` | Native generation (#1), bounded completion generation (#6) | Landed |
-| `codex/verify-streaming` | #3 comment-mode ownership, #5 early stop | Mac validation passed; integration pending |
+| `main` | Native generation (#1), bounded completion generation (#6), comment ownership and early stop (#7) | Landed; #7 merged at `7f5f8f8` |
 
-Open issues: [#3](https://github.com/StoneHub/apple-fm-swift/issues/3) and [#5](https://github.com/StoneHub/apple-fm-swift/issues/5), both addressed on the branch above and closed by its merge.
+Open issues: none after #7 closed #3 and #5.
 
 ## What the helper does today
 
@@ -26,7 +25,7 @@ The native Swift API (`AppleFMClient.modelAvailability`, `generate(instructions:
 
 ## Next
 
-Integrate the tested branch and bundle its helper with the editor change that sends `keep`. Public releases are a separate step. The large-file fixture still restates code and therefore produces no suggestion; the editor tracks that quality issue separately.
+The editor integration is apple-fm-vscode #21 and version 0.1.8. Public releases are a separate step. The large-file fixture still restates code and therefore produces no suggestion; the editor tracks that quality issue separately.
 
 ## Validation on this Mac, 2026-09-24
 
