@@ -9,7 +9,7 @@ Last updated 2026-09-24. Version `0.1.0` (no release cut since #6).
 | Where | What | State |
 | --- | --- | --- |
 | `main` @ `d5755b6` | Native generation (#1), bounded completion generation (#6) | Landed |
-| `stonework/jolly-faraday-4ifbvg` | #3 comment-mode ownership, #5 early stop | Pushed; needs `swift test` and dogfood on a Mac before merging |
+| `codex/verify-streaming` | #3 comment-mode ownership, #5 early stop | Mac validation passed; integration pending |
 
 Open issues: [#3](https://github.com/StoneHub/apple-fm-swift/issues/3) and [#5](https://github.com/StoneHub/apple-fm-swift/issues/5), both addressed on the branch above and closed by its merge.
 
@@ -17,7 +17,7 @@ Open issues: [#3](https://github.com/StoneHub/apple-fm-swift/issues/3) and [#5](
 
 - **Request**: `id`, `kind` (`terminal` or `editor`), `language`, `before`, `after`, and optionally `context`, `mode` and `keep`. `before` + `after` + `context` must fit in 6,000 characters.
 - **Prompting**: the instructions add a rule of their own only for terminal requests (one line). Everything else about the cursor comes from the caller's `context`, which the model may follow. The prefix and suffix are data. The prompt marks the cursor with `<CURSOR>` and doesn't use echoable `Prefix:`/`Suffix:` labels.
-- **Sampling**: greedy. The cap is 48 tokens for terminal and `mode: "comment"` requests and 160 for other editor requests. `mode` affects nothing else.
+- **Sampling**: greedy. The cap is 48 tokens for terminal and `mode: "comment"` requests and 160 for other editor requests. `mode` also enables caller-owned comment instructions in bounded context.
 - **Early stop** (branch): with `keep: "line"` or `"block"`, the helper streams and stops once the reply holds what the caller keeps. The rule matches the extension's `stopWhen`: a complete first line that doesn't repeat a line above the cursor, more than 12 non-blank lines, or more than 1,200 characters. The reply can end partway through a line. Without `keep`, the reply is generated in full.
 - **Trimming** (`normalize(_:for:)`): drops an exact echo of `before` or `after`, and the line breaks around a terminal reply. Nothing else. Comment and block shaping belong to the extension.
 - **Result**: one JSON line with `ok`, `empty`, `unavailable`, `cancelled` or `error`. A terminal reply with control characters or several lines is an error.
@@ -26,12 +26,16 @@ The native Swift API (`AppleFMClient.modelAvailability`, `generate(instructions:
 
 ## Next
 
-1. **Verify the branch on a Mac**: run `swift test` and `swift build -c release`. The branch was written in a Linux container with no Swift toolchain, so it has not been compiled. The parts most likely to need a fix are the `streamResponse` loop (`snapshot.content`) and the trailing closure passed to the internal `generate(…, until:)`.
-2. **Extension change for #5** (apple-fm-vscode): send `keep` from `prepare()` in `src/pipeline.ts`. Use `'line'` when `hint.comment || linePrefix.trim()` is true, otherwise `'block'`, the same test `stopWhen` uses. Add `keep?: 'line' | 'block'` to `Request` in `src/backend.ts`. An older helper ignores the field, so the order of the two releases doesn't matter.
-3. **Dogfood**:
-   - #3: the comment fixtures should score the same or better. The instructions no longer tell the model to treat `context` as data, so check non-comment fixtures too.
-   - #5: `ruby_large_class.rb` should take about as long on the Swift backend as on the CLI backend (about 1.4 s), and the other fixtures' verdicts shouldn't change.
-4. **Release**: once the branch is merged, bump `VERSION`, run `./scripts/release.sh`, and rebuild the helper the extension bundles.
+Integrate the tested branch and bundle its helper with the editor change that sends `keep`. Public releases are a separate step. The large-file fixture still restates code and therefore produces no suggestion; the editor tracks that quality issue separately.
+
+## Validation on this Mac, 2026-09-24
+
+- 21 Swift tests passed and the Release helper built.
+- The original branch changed instructions for all requests and made the TypeScript call-argument fixture stop suggesting. Limiting that instruction change to comment mode restored the baseline.
+- Editor tests passed, including 31 recorded replies and explicit `keep` request checks.
+- Three live runs of all 13 Swift fixtures: 33 good, 6 empty, 0 bad or unchecked; no verdict regressed. The baseline was 11 good and 2 empty in one run.
+- Large-file requests took 1.132–1.195 seconds, versus 1.204 seconds for the current helper in the baseline. This does not establish a material latency improvement on this model version.
+- Code and terminal prompts stay unchanged. The native typed generation API is unchanged; Jot does not need a dependency update for this helper work.
 
 ## Known limits
 

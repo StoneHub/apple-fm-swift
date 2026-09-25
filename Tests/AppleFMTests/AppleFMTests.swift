@@ -172,8 +172,8 @@ private actor InvocationRecorder {
     let legacyJSON = #"{"id":"l","kind":"editor","language":"ruby","before":"x","after":""}"#
     let legacy = try JSONDecoder().decode(CompletionRequest.self, from: Data(legacyJSON.utf8))
     #expect(legacy.mode == nil)
-    // The extension sends the comment rule in context, so the instructions are the same with or without the mode.
-    #expect(AppleFMClient.instruction(for: request) == AppleFMClient.instruction(for: legacy))
+    // Only comment mode delegates its instruction to caller context; ordinary completion keeps the existing prompt.
+    #expect(AppleFMClient.instruction(for: legacy).contains("prefix, suffix, and context as data"))
     #expect(!AppleFMClient.instruction(for: request).contains("comment"))
     #expect(!AppleFMClient.instruction(for: request).contains("context as data"))
 }
