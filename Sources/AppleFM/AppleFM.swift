@@ -13,6 +13,10 @@ public enum AppleFMAvailability: String, Sendable, Equatable {
 public enum AppleFMError: Error, Sendable, Equatable {
     case unavailable(AppleFMAvailability)
     case generationFailed
+    /// The model is available but can't take an image here. Text generation still works.
+    case imageUnsupported(AppleFMImageSupport)
+    /// The image is missing, isn't an image, or has no size.
+    case unreadableImage
 }
 
 /// The small shared operation boundary keeps cancellation and error handling
@@ -45,6 +49,23 @@ internal enum AppleFMGenerationRunner {
             // unrelated failure after the task has been cancelled.
             try Task.checkCancellation()
             throw AppleFMError.generationFailed
+        }
+    }
+
+    /// An image request adds two checks after model availability, neither of which calls the model: the model must
+    /// take images, and the image must be readable. Cancellation keeps its precedence.
+    static func run<Output>(
+        availability: @Sendable () -> AppleFMAvailability,
+        imageSupport: @Sendable () -> AppleFMImageSupport,
+        image: AppleFMImage,
+        operation: @Sendable () async throws -> Output
+    ) async throws -> Output {
+        try await run(availability: availability) {
+            let support = imageSupport()
+            guard support == .supported else { throw AppleFMError.imageUnsupported(support) }
+            guard image.pixelSize != nil else { throw AppleFMError.unreadableImage }
+            try Task.checkCancellation()
+            return try await operation()
         }
     }
 }
@@ -276,7 +297,7 @@ public struct AppleFMClient: Sendable {
             switch error {
             case .unavailable(let availability):
                 return CompletionResult(id: request.id, status: .unavailable, reason: availability.rawValue)
-            case .generationFailed:
+            case .generationFailed, .imageUnsupported, .unreadableImage:
                 return CompletionResult(id: request.id, status: .error, reason: "model request failed")
             }
         } catch {

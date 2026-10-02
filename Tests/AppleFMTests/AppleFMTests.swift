@@ -1,6 +1,8 @@
 import Testing
+import CoreGraphics
 import Foundation
 import FoundationModels
+import ImageIO
 @testable import AppleFM
 
 private enum SecretModelError: Error {
@@ -277,4 +279,195 @@ private actor InvocationRecorder {
         #expect(!AppleFMClient.hasEverythingKept(String(repeating: "x", count: 1_200), for: request))
         #expect(AppleFMClient.hasEverythingKept(String(repeating: "x", count: 1_201), for: request))
     }
+}
+
+private func temporaryURL(_ suffix: String) -> URL {
+    FileManager.default.temporaryDirectory.appendingPathComponent("applefm-\(UUID().uuidString)\(suffix)")
+}
+
+private func blankImage(width: Int, height: Int) throws -> CGImage {
+    let context = try #require(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                         space: CGColorSpaceCreateDeviceRGB(),
+                                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+    return try #require(context.makeImage())
+}
+
+private func writePNG(width: Int, height: Int) throws -> URL {
+    let url = temporaryURL(".png")
+    let destination = try #require(CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil))
+    let image = try blankImage(width: width, height: height)
+    CGImageDestinationAddImage(destination, image, nil)
+    #expect(CGImageDestinationFinalize(destination))
+    return url
+}
+
+private func writeText() throws -> URL {
+    let url = temporaryURL(".png")
+    try Data("not an image".utf8).write(to: url)
+    return url
+}
+
+private func imageRequest(image: String = "/tmp/screen.png", instructions: String = "Answer briefly.", prompt: String = "What does the error say?",
+                          context: String? = nil, maxResponseTokens: Int? = nil) -> ImageRequest {
+    ImageRequest(id: "image", image: image, instructions: instructions, prompt: prompt, context: context, maxResponseTokens: maxResponseTokens)
+}
+
+@Test func imageRequestDecodesWithOptionalFieldsAbsent() throws {
+    let json = #"{"id":"i","kind":"image","image":"/tmp/screen.png","instructions":"Answer briefly.","prompt":"What is shown?"}"#
+    let request = try JSONDecoder().decode(ImageRequest.self, from: Data(json.utf8))
+    #expect(request.kind == "image")
+    #expect(request.context == nil && request.maxResponseTokens == nil && request.greedy == nil)
+    let encoded = String(decoding: try JSONEncoder().encode(request), as: UTF8.self)
+    #expect(!encoded.contains("context") && !encoded.contains("greedy"))
+    #expect(try JSONDecoder().decode(ImageRequest.self, from: Data(encoded.utf8)) == request)
+}
+
+@Test func completionRequestsStillDecodeAndImageRequestsDoNot() throws {
+    // The helper routes on kind, and a helper built before image support rejects an image request as malformed.
+    let json = #"{"id":"i","kind":"image","image":"/tmp/screen.png","instructions":"Answer briefly.","prompt":"What is shown?"}"#
+    #expect(throws: DecodingError.self) { try JSONDecoder().decode(CompletionRequest.self, from: Data(json.utf8)) }
+}
+
+@Test func imageRequestProblemsAreFoundBeforeTheFileIsRead() throws {
+    #expect(AppleFMClient.problem(with: imageRequest()) == nil)
+    let otherKind = #"{"id":"i","kind":"editor","image":"/tmp/screen.png","instructions":"Answer.","prompt":"What?"}"#
+    #expect(AppleFMClient.problem(with: try JSONDecoder().decode(ImageRequest.self, from: Data(otherKind.utf8))) == "kind must be image")
+    #expect(AppleFMClient.problem(with: imageRequest(instructions: " \n")) == "instructions and prompt are required")
+    #expect(AppleFMClient.problem(with: imageRequest(prompt: "")) == "instructions and prompt are required")
+    let limit = AppleFMClient.maximumImageTextCharacters
+    let full = imageRequest(instructions: "i", prompt: "p", context: String(repeating: "x", count: limit - 2))
+    #expect(AppleFMClient.problem(with: full) == nil)
+    let over = imageRequest(instructions: "i", prompt: "p", context: String(repeating: "x", count: limit - 1))
+    #expect(AppleFMClient.problem(with: over) == "text exceeds 8000 characters")
+    for tokens in [1, AppleFMClient.maximumImageResponseTokens] {
+        #expect(AppleFMClient.problem(with: imageRequest(maxResponseTokens: tokens)) == nil)
+    }
+    for tokens in [0, -1, AppleFMClient.maximumImageResponseTokens + 1] {
+        #expect(AppleFMClient.problem(with: imageRequest(maxResponseTokens: tokens)) == "maxResponseTokens must be 1–2048")
+    }
+    #expect(AppleFMClient.problem(with: imageRequest(image: "screen.png")) == "image path must be absolute")
+}
+
+@Test func imageLimitsCoverSizeAndPixels() {
+    let bytes = AppleFMClient.maximumImageBytes
+    #expect(AppleFMClient.imageProblem(isRegularFile: false, bytes: 10, pixelSize: (width: 1, height: 1)) == "image not found")
+    #expect(AppleFMClient.imageProblem(isRegularFile: true, bytes: nil, pixelSize: (width: 1, height: 1)) == "image not found")
+    #expect(AppleFMClient.imageProblem(isRegularFile: true, bytes: bytes, pixelSize: (width: 1, height: 1)) == nil)
+    #expect(AppleFMClient.imageProblem(isRegularFile: true, bytes: bytes + 1, pixelSize: (width: 1, height: 1)) == "image exceeds 20 MB")
+    #expect(AppleFMClient.imageProblem(isRegularFile: true, bytes: 10, pixelSize: nil) == "unreadable image")
+    #expect(AppleFMClient.imageProblem(isRegularFile: true, bytes: 10, pixelSize: (width: 6_000, height: 6_000)) == nil)
+    #expect(AppleFMClient.imageProblem(isRegularFile: true, bytes: 10, pixelSize: (width: 6_001, height: 6_000)) == "image exceeds 36 megapixels")
+}
+
+@Test func pixelSizeReadsOnlyRealImages() throws {
+    let png = try writePNG(width: 4, height: 3)
+    let text = try writeText()
+    defer { try? FileManager.default.removeItem(at: png); try? FileManager.default.removeItem(at: text) }
+    let file = AppleFMImage.file(png).pixelSize
+    #expect(file?.width == 4 && file?.height == 3)
+    let memory = AppleFMImage.cgImage(try blankImage(width: 5, height: 2)).pixelSize
+    #expect(memory?.width == 5 && memory?.height == 2)
+    #expect(AppleFMImage.file(text).pixelSize == nil)
+    #expect(AppleFMImage.file(temporaryURL(".png")).pixelSize == nil)
+    #expect(AppleFMImage.file(try #require(URL(string: "https://example.com/a.png"))).pixelSize == nil)
+}
+
+@Test func imageFileProblemChecksTheFileItself() throws {
+    let png = try writePNG(width: 4, height: 3)
+    let text = try writeText()
+    defer { try? FileManager.default.removeItem(at: png); try? FileManager.default.removeItem(at: text) }
+    #expect(AppleFMClient.imageFileProblem(at: png) == nil)
+    #expect(AppleFMClient.imageFileProblem(at: text) == "unreadable image")
+    #expect(AppleFMClient.imageFileProblem(at: temporaryURL(".png")) == "image not found")
+    #expect(AppleFMClient.imageFileProblem(at: FileManager.default.temporaryDirectory) == "image not found")
+}
+
+@Test func analyzeReportsBadRequestsWithoutTheModel() async throws {
+    let text = try writeText()
+    defer { try? FileManager.default.removeItem(at: text) }
+    #expect(await AppleFMClient().analyze(imageRequest(image: "screen.png"))
+            == ImageResult(id: "image", status: .error, reason: "image path must be absolute"))
+    #expect(await AppleFMClient().analyze(imageRequest(image: text.path))
+            == ImageResult(id: "image", status: .error, reason: "unreadable image"))
+    #expect(await AppleFMClient().analyze(imageRequest(image: temporaryURL(".png").path))
+            == ImageResult(id: "image", status: .error, reason: "image not found"))
+}
+
+@Test func imagePromptTextJoinsContextAfterABlankLine() {
+    #expect(AppleFMClient.imagePromptText(for: imageRequest(prompt: "Explain.")) == "Explain.")
+    #expect(AppleFMClient.imagePromptText(for: imageRequest(prompt: "Explain.", context: "")) == "Explain.")
+    #expect(AppleFMClient.imagePromptText(for: imageRequest(prompt: "Explain.", context: "let x = 1")) == "Explain.\n\nlet x = 1")
+}
+
+@Test func imageOptionsUseModelSamplingUnlessGreedy() throws {
+    guard #available(macOS 26.0, *) else { return }
+    #expect(AppleFMClient.imageOptions(for: imageRequest()) == GenerationOptions(samplingMode: nil, maximumResponseTokens: 1_024))
+    let greedy = ImageRequest(id: "g", image: "/tmp/a.png", instructions: "i", prompt: "p", maxResponseTokens: 300, greedy: true)
+    #expect(AppleFMClient.imageOptions(for: greedy) == GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 300))
+}
+
+@Test func imageSupportIsReadableOnEverySystem() {
+    let support = AppleFMClient().imageSupport
+    let answers: [AppleFMImageSupport] = [.supported, .requiresNewerOS, .visionUnsupported]
+    #expect(answers.contains(support))
+    if #unavailable(macOS 27) { #expect(support == .requiresNewerOS) }
+    #expect(AppleFMImageSupport.requiresNewerOS.rawValue == "image_requires_macos_27")
+    #expect(AppleFMImageSupport.visionUnsupported.rawValue == "vision_unsupported")
+}
+
+@Test func imageRunnerChecksModelThenSupportThenImage() async throws {
+    let recorder = InvocationRecorder()
+    let readable = AppleFMImage.cgImage(try blankImage(width: 2, height: 2))
+    let missing = AppleFMImage.file(temporaryURL(".png"))
+    let cases: [(AppleFMAvailability, AppleFMImageSupport, AppleFMImage, AppleFMError)] = [
+        (.modelNotReady, .supported, readable, .unavailable(.modelNotReady)),
+        (.available, .visionUnsupported, readable, .imageUnsupported(.visionUnsupported)),
+        (.available, .requiresNewerOS, readable, .imageUnsupported(.requiresNewerOS)),
+        (.available, .supported, missing, .unreadableImage)
+    ]
+    for (availability, support, image, expected) in cases {
+        do {
+            _ = try await AppleFMGenerationRunner.run(availability: { availability }, imageSupport: {
+                if availability != .available { Issue.record("image support must not be read for an unavailable model") }
+                return support
+            }, image: image) {
+                await recorder.recordInvocation()
+                return "unexpected"
+            }
+            Issue.record("image request unexpectedly generated a response")
+        } catch let error as AppleFMError {
+            #expect(error == expected)
+        } catch {
+            Issue.record("unexpected error: \(error)")
+        }
+    }
+    #expect(await recorder.count == 0)
+    let output = try await AppleFMGenerationRunner.run(availability: { .available }, imageSupport: { .supported }, image: readable) {
+        await recorder.recordInvocation()
+        return "described"
+    }
+    #expect(output == "described")
+    #expect(await recorder.count == 1)
+}
+
+@Test func imageRunnerHonorsCancellationBeforeChecks() async throws {
+    let readable = AppleFMImage.cgImage(try blankImage(width: 2, height: 2))
+    let task = Task {
+        withUnsafeCurrentTask { $0?.cancel() }
+        return try await AppleFMGenerationRunner.run(availability: { .available }, imageSupport: {
+            Issue.record("image support must not be read after pre-cancellation")
+            return .supported
+        }, image: readable) { "unexpected" }
+    }
+    task.cancel()
+    await #expect(throws: CancellationError.self) { try await task.value }
+}
+
+@Test func imageResultsEncodeOnlyWhatIsSet() throws {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    let ok = String(decoding: try encoder.encode(ImageResult(id: "i", status: .ok, text: "A dialog.")), as: UTF8.self)
+    #expect(ok == #"{"id":"i","status":"ok","text":"A dialog."}"#)
+    let unavailable = String(decoding: try encoder.encode(ImageResult(id: "i", status: .unavailable, reason: "vision_unsupported")), as: UTF8.self)
+    #expect(unavailable == #"{"id":"i","reason":"vision_unsupported","status":"unavailable"}"#)
 }

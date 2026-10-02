@@ -2,15 +2,16 @@
 
 Living document. Update it whenever work lands, a branch opens, or an issue changes state.
 
-Last updated 2026-09-24. Version `0.1.0` (no release cut since #6).
+Last updated 2026-10-02. Version `0.1.0` (no release cut since #6).
 
 ## Now
 
 | Where | What | State |
 | --- | --- | --- |
 | `main` | Native generation (#1), bounded completion generation (#6), comment ownership and early stop (#7) | Landed; #7 merged at `7f5f8f8` |
+| `stonework/great-archimedes-aeme6x` | Image input for native callers and the helper (#8) | Branch; exact-head Mac functional checks passed; experimental model-quality limits below |
 
-Open issues: none after #7 closed #3 and #5.
+Open issues: #8 (image input), which Jot #162 and apple-fm-vscode #24 depend on.
 
 ## What the helper does today
 
@@ -23,9 +24,30 @@ Open issues: none after #7 closed #3 and #5.
 
 The native Swift API (`AppleFMClient.modelAvailability`, `generate(instructions:prompt:options:)` and the `Generable` overload, both for macOS 26 and later) hasn't changed since #1. Each call gets a fresh session. It throws only `CancellationError` or a sanitized `AppleFMError`, and it never logs or retains anything.
 
+## Image input (#8, branch)
+
+- **Native**: `generate(instructions:prompt:image:options:)` and a `generating:` overload take one `AppleFMImage` (`.cgImage` or `.file`). They are declared for macOS 26 so that callers get `AppleFMError.imageUnsupported(.requiresNewerOS)` there instead of needing a macOS 27 guard. `imageSupport` reads `SystemLanguageModel.default.capabilities.contains(.vision)` on macOS 27.
+- **Checks before the model**: cancellation, model availability, image support, then the image's pixel size (the file header for a file). None of them calls the model.
+- **Helper**: `kind: "image"` requests are routed before completion decoding. Bounds: 20 MB, 36 megapixels, 8,000 UTF-16 characters of text, 1–2048 response tokens (1024 by default). The caller owns the instructions and prompt, as apple-fm-vscode #16 asks for editor prompts.
+- **Compatibility**: `AppleFMAvailability` is unchanged, since Jot switches over it exhaustively. `AppleFMError` gains `imageUnsupported` and `unreadableImage`; text generation never throws them, and Jot only matches `.unavailable`. Completion requests decode exactly as before.
+- **Measurements**: exact-head image generation, first/repeated call timings and three image sizes were exercised on the Mac; see the 2026-10-02 evidence below. Image token accounting remains unavailable because the SDK counter failed on attachments. Pixel count does not establish token usage.
+
 ## Next
 
 The editor integration is apple-fm-vscode #21 and version 0.1.8. Public releases are a separate step. The large-file fixture still restates code and therefore produces no suggestion; the editor tracks that quality issue separately.
+
+## Image validation on this Mac, 2026-10-02
+
+Tested PR #9 head `bb7d0e84ef0e7aa04e3f521c61fe20e6dacb7f72`, base `5e6bbeade8eaa69a6f2a7cefe386a4ed32bfb73b`, on macOS 27.2 with Xcode 27 / Swift 6.4. These are functional harness checks; model answers remain experimental.
+
+- 34 Swift tests, the Release helper and the Release NativeGeneration example passed. Live file-image generation and native `CGImage` plain-text/structured generation succeeded; availability and image support reported `available` / `supported`.
+- The approved public [Jot General screenshot](https://github.com/StoneHub/jot/blob/fa518b7357b4560bf16dad25217dba678e88ba12/docs/images/jot-general-settings.png) (1608 × 1466, SHA-256 `860fff3be73a2b5fa873084aa3c780618993f3c823559ef8858e6416e8f5714e`) was inspected before testing. The native example and generic helper correctly described the visible local-dictation settings interface. No new screen capture or GUI interaction was needed.
+- Screenshot native calls took **1.840 / 1.045 s** first/repeated in one process. Targeted helper processes took **1.179 / 1.142 s**. Native timing surrounds generation; helper timing includes process launch/exit. The model was already used that day: these are not proven cold-model timings and exclude capture time.
+- Valid helper requests returned one JSON line with `status: ok`. Relative path, missing file, text disguised as PNG, >20 MB input and missing prompt each returned one JSON line with `status: error` and the expected short reason. All exited 0 with empty stderr. Real owned-helper cancellation returned `cancelled`; its child was gone after disposal.
+- **Experimental model quality:** both targeted screenshot replies reversed two switch states: Mute built-in speakers was off but reported enabled; Clean up with Apple Intelligence was on but reported disabled. They omitted the General heading; a focused diagnostic read General correctly but still misread switch visuals. This is a recorded model-quality limitation, not a failure of image transport/input validation or a claim of reliable UI-state reading. The harness lets people experience current models as their capabilities evolve; consumers own factual validation.
+- Earlier synthetic 384 × 256, 1152 × 768 and 2048 × 1365 images took first/repeated **0.822 / 0.524 s**, **1.207 / 0.546 s** and **0.712 / 0.550 s**. Larger circles were described as ovals. Two samples per size do not establish scaling or battery cost.
+- **Image token accounting unavailable:** `SystemLanguageModel.default.tokenCount` returned 7 for text alone, but failed for attachments at all three sizes (FoundationModels -1 / ModelManagerServices 1001 / InferenceError 2008 / tokengenerationcore 1). Image generation succeeded separately. Whether image tokens are included remains unknown; no image-token guarantee is made.
+- Native cancellation is checked before/after generation and preserves `CancellationError`, with automated precedence/late-response coverage. Direct live in-flight native Task cancellation was not separately measured. Owned-helper termination does not establish immediate cessation of system inference; callers own deadlines. Older-OS runtime checks and consumer crop/privacy/capture/UI acceptance remain separate and unverified by these checks.
 
 ## Validation on this Mac, 2026-09-24
 
@@ -44,6 +66,8 @@ The editor integration is apple-fm-vscode #21 and version 0.1.8. Public releases
 - There's no LICENSE file yet.
 
 ## Verification log
+
+- **2026-09-28, #8 branch**: written in a Linux cloud session without Apple's SDK, so nothing was compiled or run. API names and signatures come from Apple's FoundationModels documentation for macOS 27 (`Attachment(_:orientation:)`, `Attachment(imageURL:orientation:)`, `LanguageModelCapabilities.Capability.vision`, `GenerationOptions(samplingMode:temperature:maximumResponseTokens:)`). Before merging, on the Mac: `swift test`, `swift build -c release`, `swift build -c release --package-path Examples/NativeGeneration`, the example with a real screenshot, the helper image request in the README, and malformed/oversized/non-image/relative-path helper requests.
 
 - **2026-09-24, #3 and #5 branch**: no Swift toolchain in the container (swift.org is blocked by the network policy, and Ubuntu doesn't package Swift), so `swift test` wasn't run. I checked the new stop-rule test expectations against the extension's `stopWhen` in Node: all 15 cases agree.
 - **2026-09-20, #1 on macOS 27.2 with Swift 6.4**:
