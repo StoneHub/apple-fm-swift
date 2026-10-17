@@ -12,7 +12,7 @@ A source/design review needs only Git and a text reader. Record the checkout com
 
 AppleFM owns generic on-device availability and generation. Callers own retrieval, schemas, deadlines, cancellation policy, bounds and output validation. Jot's planned shared suggestion context does not belong in this generic framework. Keep prompts and private transcript schemas out of it.
 
-At preparation on 2026-09-25, this repo was `8f3f033`; Jot pinned `737fac9e7147403f2777e0901f02452e8fc25ae7` in `Package.swift`, `Package.resolved` and `project.yml`. A change here does not update Jot. Any dependency upgrade is a separate caller change, with matching pins and Mac verification. FluidAudio is another Jot dependency, maintained externally; it is outside this personal-repo task queue.
+Jot pins an exact revision in `Package.swift`, `Package.resolved` and `project.yml` (on 2026-10-17, `5b937241b0236f892af28588e75a78dd557acf21`, the #9 merge). Read those files for the current pin. A change here does not update Jot. Any dependency upgrade is a separate caller change, with matching pins and Mac verification. FluidAudio is another Jot dependency, maintained externally; it is outside this personal-repo task queue.
 
 ## Return contract
 
