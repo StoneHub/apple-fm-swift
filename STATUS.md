@@ -2,29 +2,28 @@
 
 Living document. Update it whenever work lands, a branch opens, or an issue changes state.
 
-Last updated 2026-10-02. Version `0.1.0` (no release cut since #6).
+Last updated 2026-10-17. Version `0.1.0` (no release cut since #6).
 
 ## Now
 
 | Where | What | State |
 | --- | --- | --- |
-| `main` | Native generation (#1), bounded completion generation (#6), comment ownership and early stop (#7) | Landed; #7 merged at `7f5f8f8` |
-| `stonework/great-archimedes-aeme6x` | Image input for native callers and the helper (#8) | Branch; exact-head Mac functional checks passed; experimental model-quality limits below |
+| `main` | Native generation (#1), bounded completion generation (#6), comment ownership and early stop (#7), image input (#9) | Landed; #9 merged at `5b93724`, which Jot pins |
 
-Open issues: #8 (image input), which Jot #162 and apple-fm-vscode #24 depend on.
+Open issues: none. #8 (image input) landed in #9; Jot #162 and apple-fm-vscode #24 can build on it.
 
 ## What the helper does today
 
 - **Request**: `id`, `kind` (`terminal` or `editor`), `language`, `before`, `after`, and optionally `context`, `mode` and `keep`. `before` + `after` + `context` must fit in 6,000 characters.
 - **Prompting**: the instructions add a rule of their own only for terminal requests (one line). Everything else about the cursor comes from the caller's `context`, which the model may follow. The prefix and suffix are data. The prompt marks the cursor with `<CURSOR>` and doesn't use echoable `Prefix:`/`Suffix:` labels.
 - **Sampling**: greedy. The cap is 48 tokens for terminal and `mode: "comment"` requests and 160 for other editor requests. `mode` also enables caller-owned comment instructions in bounded context.
-- **Early stop** (branch): with `keep: "line"` or `"block"`, the helper streams and stops once the reply holds what the caller keeps. The rule matches the extension's `stopWhen`: a complete first line that doesn't repeat a line above the cursor, more than 12 non-blank lines, or more than 1,200 characters. The reply can end partway through a line. Without `keep`, the reply is generated in full.
+- **Early stop**: with `keep: "line"` or `"block"`, the helper streams and stops once the reply holds what the caller keeps. The rule matches the extension's `stopWhen`: a complete first line that doesn't repeat a line above the cursor, more than 12 non-blank lines, or more than 1,200 characters. The reply can end partway through a line. Without `keep`, the reply is generated in full.
 - **Trimming** (`normalize(_:for:)`): drops an exact echo of `before` or `after`, and the line breaks around a terminal reply. Nothing else. Comment and block shaping belong to the extension.
 - **Result**: one JSON line with `ok`, `empty`, `unavailable`, `cancelled` or `error`. A terminal reply with control characters or several lines is an error.
 
 The native Swift API (`AppleFMClient.modelAvailability`, `generate(instructions:prompt:options:)` and the `Generable` overload, both for macOS 26 and later) hasn't changed since #1. Each call gets a fresh session. It throws only `CancellationError` or a sanitized `AppleFMError`, and it never logs or retains anything.
 
-## Image input (#8, branch)
+## Image input (#9)
 
 - **Native**: `generate(instructions:prompt:image:options:)` and a `generating:` overload take one `AppleFMImage` (`.cgImage` or `.file`). They are declared for macOS 26 so that callers get `AppleFMError.imageUnsupported(.requiresNewerOS)` there instead of needing a macOS 27 guard. `imageSupport` reads `SystemLanguageModel.default.capabilities.contains(.vision)` on macOS 27.
 - **Checks before the model**: cancellation, model availability, image support, then the image's pixel size (the file header for a file). None of them calls the model.
