@@ -39,6 +39,8 @@ func edit(_ input: String) async throws -> String {
 
 Omit `generating:` for plain text. Both overloads accept Apple's `GenerationOptions` directly and create a fresh session with the on-device system model. Instructions and prompt are separate. The library does not retain conversation history or log inputs, outputs, or underlying errors.
 
+Both text and typed generation also accept optional caller-owned `tools: [any Tool]` from FoundationModels. Tools default to an empty list. The caller owns tool permissions, side effects, validation and lifecycle; exposing a tool lets the model invoke it during the explicit generation request. For an optional read-only Safari client using the same native tool API, see [Safari Agent's Apple FM adapter](https://github.com/StoneHub/safari-agent/tree/main/clients/apple-fm). Browser access remains a separately paired and per-tab-granted integration; ordinary completions acquire no browser access.
+
 Generation throws `CancellationError`, `AppleFMError.unavailable(reason)`, or the sanitized `AppleFMError.generationFailed`; image requests can also throw `imageUnsupported` or `unreadableImage` (see [Images](#images)). Cancellation is checked before and after the model call and remains in the caller's task; it does not promise that system inference stops instantly. Callers own deadlines, concurrency/backlog limits, input limits, schemas, and output validation. Structured generation constrains shape, not factual correctness.
 
 `availability() -> String`, `complete(_:)`, and the helper JSON format remain compatible. Completion uses the same native generation path and keeps its existing terminal/editor validation and normalization.

@@ -142,6 +142,7 @@ public struct AppleFMClient: Sendable {
     public func generate(
         instructions: String,
         prompt: String,
+        tools: [any Tool] = [],
         options: GenerationOptions = GenerationOptions()
     ) async throws -> String {
         try await AppleFMGenerationRunner.run(availability: { self.modelAvailability }) {
@@ -149,6 +150,7 @@ public struct AppleFMClient: Sendable {
             // session. No conversation state is retained by AppleFMClient.
             let session = LanguageModelSession(
                 model: SystemLanguageModel.default,
+                tools: tools,
                 instructions: instructions
             )
             let response = try await session.respond(to: prompt, options: options)
@@ -186,11 +188,13 @@ public struct AppleFMClient: Sendable {
         instructions: String,
         prompt: String,
         generating type: Content.Type,
+        tools: [any Tool] = [],
         options: GenerationOptions = GenerationOptions()
     ) async throws -> Content {
         try await AppleFMGenerationRunner.run(availability: { self.modelAvailability }) {
             let session = LanguageModelSession(
                 model: SystemLanguageModel.default,
+                tools: tools,
                 instructions: instructions
             )
             let response = try await session.respond(
