@@ -102,3 +102,7 @@ These projects work independently and share optional local integrations:
 - [Android OTP for Safari](https://github.com/StoneHub/android-otp-for-safari): a separate Android-to-Safari verification-code workflow.
 
 Read each repository's requirements and release notes before installing. Public source, downloadable artifacts, signing/notarization and successful installation are separate milestones. The [showcase concept](https://github.com/StoneHub/safari-agent/blob/main/docs/showcase-concept.md) proposes a shared directory; no new hosted site is implied.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
