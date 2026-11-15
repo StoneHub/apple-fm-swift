@@ -2,13 +2,14 @@
 
 Living document. Update it whenever work lands, a branch opens, or an issue changes state.
 
-Last updated 2026-10-17. Version `0.1.0` (no release cut since #6).
+Last updated 2026-11-15. Version `0.1.0` (no release cut since #6).
 
 ## Now
 
 | Where | What | State |
 | --- | --- | --- |
 | `main` | Native generation (#1), bounded completion generation (#6), comment ownership and early stop (#7), image input (#9) | Landed; #9 merged at `5b93724`, which Jot pins |
+| `claude/project-thread-esjpma` | `apple-fm-acp`: Apple Intelligence as an ACP agent for Xcode's coding assistant ([docs/XCODE-ACP.md](docs/XCODE-ACP.md)) | Draft PR; `ACPAgentTests` pass on Linux (Swift 6.1.2); Mac build, `swift test`, smoke script and Xcode trial pending |
 
 Open issues: none. #8 (image input) landed in #9; Jot #162 and apple-fm-vscode #24 can build on it.
 
