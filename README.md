@@ -81,6 +81,10 @@ printf '%s\n' '{"id":"q1","kind":"image","image":"/tmp/screenshot.png","instruct
 
 Try an image natively with `swift run --package-path Examples/NativeGeneration NativeGenerationExample /path/to/image.png`. It sends two requests with the same image and prints the time of each.
 
+## Xcode coding assistant agent
+
+`apple-fm-acp` puts Apple Intelligence in Xcode's coding assistant as an [Agent Client Protocol](https://agentclientprotocol.com/) agent. Build it with `swift build -c release --product apple-fm-acp`, copy it to a stable path, and add it under **Xcode > Settings > Intelligence > Add an Agent** with that absolute path as the executable and no interpreter, arguments or environment variables. It answers on device, reads project files through Xcode when asked, and never edits files or runs commands. See [docs/XCODE-ACP.md](docs/XCODE-ACP.md) for setup, limits and the stdio smoke test.
+
 ## Releases
 
 Download versioned source from [GitHub Releases](https://github.com/StoneHub/apple-fm-swift/releases/latest). Build locally to use the helper independently. For a prebuilt end-user install, use the VS Code release above.
