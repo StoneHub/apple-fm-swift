@@ -2,14 +2,16 @@
 
 Living document. Update it whenever work lands, a branch opens, or an issue changes state.
 
-Last updated 2026-11-15. Version `0.1.0` (no release cut since #6).
+Last updated 2026-11-16. Version `0.1.0` (no release cut since #6).
 
 ## Now
 
 | Where | What | State |
 | --- | --- | --- |
 | `main` | Native generation (#1), bounded completion generation (#6), comment ownership and early stop (#7), image input (#9) | Landed; #9 merged at `5b93724`, which Jot pins |
-| `claude/project-thread-esjpma` | `apple-fm-acp`: Apple Intelligence as an ACP agent for Xcode's coding assistant ([docs/XCODE-ACP.md](docs/XCODE-ACP.md)) | Draft PR; `ACPAgentTests` pass on Linux (Swift 6.1.2); Mac build, `swift test`, smoke script and Xcode trial pending |
+| `main` | `apple-fm-acp`: Apple Intelligence as an ACP agent for Xcode's coding assistant ([docs/XCODE-ACP.md](docs/XCODE-ACP.md)) | Merged in #12 on 2026-11-15; built, tested and installed on the MacBook Air at `~/.local/bin/apple-fm-acp` |
+
+Overlap: the separate [StoneHub/apple-fm-acp](https://github.com/StoneHub/apple-fm-acp) repository also builds an executable named `apple-fm-acp`, aimed at T3 Code, with its own harness-driven agent loop and no dependency on this library. Both READMEs install to `~/.local/bin/apple-fm-acp`, so installing one replaces the other. Which one keeps the name is undecided.
 
 Open issues: none. #8 (image input) landed in #9; Jot #162 and apple-fm-vscode #24 can build on it.
 
@@ -63,7 +65,6 @@ Tested PR #9 head `bb7d0e84ef0e7aa04e3f521c61fe20e6dacb7f72`, base `5e6bbeade8ea
 - Runtime generation has only been exercised on macOS 27.2 (2026-09-20 checks). The macOS 14/15 unsupported path and macOS 26 model behavior were only reviewed at compile and link time.
 - Stopping the stream ends the helper's wait, and the helper process exits right after. It is not proof that system inference stops at once.
 - The example's `GenerationOptions(sampling:…)` produces an SDK 27 deprecation warning. `samplingMode:` replaces it and works back to macOS 26.
-- There's no LICENSE file yet.
 
 ## Verification log
 
