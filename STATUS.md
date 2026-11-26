@@ -2,7 +2,7 @@
 
 Living document. Update it whenever work lands, a branch opens, or an issue changes state.
 
-Last updated 2026-11-16. Version `0.1.0` (no release cut since #6).
+Last updated 2026-11-26. Version `0.2.0`, tagged `v0.2.0` on `main` so that Splats can pin the native generation API by tag (Splats #141, PR 4). Before it, `v0.1.0` was the only tag and predated native text, structured and image generation.
 
 ## Now
 
@@ -10,6 +10,7 @@ Last updated 2026-11-16. Version `0.1.0` (no release cut since #6).
 | --- | --- | --- |
 | `main` | Native generation (#1), bounded completion generation (#6), comment ownership and early stop (#7), image input (#9) | Landed; #9 merged at `5b93724`, which Jot pins |
 | `main` | `apple-fm-acp`: Apple Intelligence as an ACP agent for Xcode's coding assistant ([docs/XCODE-ACP.md](docs/XCODE-ACP.md)) | Merged in #12 on 2026-11-15; built, tested and installed on the MacBook Air at `~/.local/bin/apple-fm-acp` |
+| `main` | Splats Factory suggestion wording and Mac scene naming move onto `AppleFMClient` (benwilliams0540/Splats#141) | In progress 2026-11-26; pins `v0.2.0` |
 
 Overlap: the separate [StoneHub/apple-fm-acp](https://github.com/StoneHub/apple-fm-acp) repository also builds an executable named `apple-fm-acp`, aimed at T3 Code, with its own harness-driven agent loop and no dependency on this library. Both READMEs install to `~/.local/bin/apple-fm-acp`, so installing one replaces the other. Which one keeps the name is undecided.
 
